@@ -3,6 +3,8 @@
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
+typedef double (* RNGPointer) ();
+
 enum Interface_States {
   Init,
   Idle,
@@ -35,10 +37,23 @@ Interface_States state = Init;
 const int maxGenerators = 6;
 byte currentGenerator = 0;
 byte menuSelection;
-byte oldMenuSelection = 7;
+
+// patterns
+RNGPointer patterns[maxGenerators];
 
 void setup() {
   Serial.begin(9600);
+
+  //patterns
+  patterns[0] = pattern1;
+  patterns[1] = pattern2;
+  patterns[2] = pattern3;
+  patterns[3] = pattern3;
+  patterns[4] = pattern3;
+  patterns[5] = pattern3;
+
+
+  //buttons
   pinMode(button1Pin, INPUT_PULLUP);
   pinMode(button2Pin, INPUT_PULLUP);
 
@@ -97,7 +112,6 @@ void detectActions() {
     if (button1.takeAction && state == Idle) {
       state = Action;
 
-      oldMenuSelection = menuSelection;
       menuSelection++;
       menuSelection = menuSelection < maxGenerators ? menuSelection : 0;
     }
@@ -140,10 +154,13 @@ void loop() {
 void showMenu() {
   if (state == Init) {
     lcd.clear();
+    lcd.cursor();
+    lcd.blink();
 
     lcd.setCursor(0, 0);
-    char buffer[20] = "Patt";
+    lcd.print("Pattern select:");
 
+    char buffer[20] = "";
     for (int i = 1; i < maxGenerators + 1; i++) {
       sprintf(buffer, "%s %d", buffer, i);
     }
@@ -151,7 +168,7 @@ void showMenu() {
     lcd.print(buffer);
 
     lcd.setCursor(0, 1);
-    lcd.print("ern:");
+    lcd.print(buffer);
 
     menuSelection = currentGenerator;
 
@@ -159,48 +176,66 @@ void showMenu() {
   }
 
   if (state == Action) {
-    showMenuSelection(' ', oldMenuSelection);
+    showMenuSelection('>', currentGenerator);
+    showMenuSelection('<', currentGenerator+1);
 
-    if (menuSelection != currentGenerator) {
-      showMenuSelection('*', currentGenerator);
-    }
-
-    showMenuSelection('^', menuSelection);
+    lcd.setCursor(menuSelection * 2 + 1, 1);
 
     state = ActionPerformed;
   }
 }
 
 void showMenuSelection(char c, byte position) {
-  lcd.setCursor(5 + position * 2, 1);
+  lcd.setCursor(position * 2, 1);
   lcd.print(c);
 }
 
 void showGenerator() {
-  if (state == Init) {    
+  if (state == Init) {   
+    lcd.clear();
+    lcd.noCursor();
+    lcd.noBlink();
+     
     lcd.setCursor(0, 0);
     char title[16] = "Pattern";
     sprintf(title, "%s %d", title, currentGenerator + 1);
     lcd.print(title);
 
-    lcd.clear();
     state = Action;
   }
 
   if (state == Action || state == Init) {
-    long number = random(2147483647L);
-    char buffer[20];
+    double number = patterns[currentGenerator]();
+    char buffer[200];
     
     lcd.setCursor(0, 1);
     lcd.print("                ");
 
     lcd.setCursor(0, 1);
-    sprintf(buffer, "0.%lu", number);
-    lcd.print(buffer);
     
-    Serial.println(buffer);
+    dtostrf(number, 7, 5, buffer);
 
+    lcd.print(buffer);    
+    Serial.println(buffer);
 
     state = ActionPerformed;
   }
 }
+
+/**
+  Returns a random number. If a random number was already returned, the new
+  generated number will be larger than previous number but not bigger than 1.
+*/
+double pattern1() {
+  return (double)random(2147483647L) / 2147483647;
+}
+
+double pattern2() {
+  return 0.2f;
+}
+
+double pattern3() {
+  return (double)random(2147483647L) / 2147483647;
+}
+
+
