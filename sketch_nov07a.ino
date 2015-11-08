@@ -15,6 +15,8 @@ enum Interface_States {
 const int button1Pin = A0;
 const int button2Pin = A1;
 
+double previousPattern1 = 0;
+
 // button states
 const int Default_Max_Clock = 2500;
 
@@ -201,10 +203,12 @@ void showGenerator() {
     sprintf(title, "%s %d", title, currentGenerator + 1);
     lcd.print(title);
 
+    previousPattern1 = 0;
+
     state = Action;
   }
 
-  if (state == Action || state == Init) {
+  if (state == Action) {
     double number = patterns[currentGenerator]();
     char buffer[200];
     
@@ -226,16 +230,28 @@ void showGenerator() {
   Returns a random number. If a random number was already returned, the new
   generated number will be larger than previous number but not bigger than 1.
 */
+
 double pattern1() {
-  return (double)random(2147483647L) / 2147483647;
+  double current = uniformRandom(previousPattern1, min(previousPattern1+0.001, 1));
+  previousPattern1 = current;
+  return current;
 }
 
 double pattern2() {
   return 0.2f;
 }
-
+/**
+  Returns a random number using the language built-in uniform generator
+*/
 double pattern3() {
   return (double)random(2147483647L) / 2147483647;
 }
+
+double uniformRandom(double min, double max) {
+  double interval = max - min;
+  return pattern3() * interval + min;
+  
+}
+
 
 
