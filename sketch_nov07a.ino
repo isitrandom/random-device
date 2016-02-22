@@ -1,39 +1,23 @@
 // initialize the library with the numbers of the interface pins
 #include <LiquidCrystal.h>
+#include "graphics.h"
+#include "settings.h"
+#include "patterns.h"
+#include "buttons.h"
+#include "types.h"
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
-typedef double (* RNGPointer) ();
+// serialData
+char serialData[1];
 
-enum Interface_States {
-  Init,
-  Idle,
-  Action,
-  ActionPerformed
-};
-
-const int button1Pin = A0;
-const int button2Pin = A1;
-
-double previousPattern1 = 0;
-
-// button states
-const int Default_Max_Clock = 2500;
-
-struct Button {
-  int pin;
-  bool pressed;
-  bool takeAction;
-  int clock;
-  int maxClock = Default_Max_Clock;
-};
-
-Button button1;
-Button button2;
+char numberBuffer[20] = "";
 
 // the shwon interface
-bool isMenuShowing = false;
+bool displayNumber = true;
+Interface interface = Intro;
 Interface_States state = Init;
+int flowerIndex[3] = {0, 0, 0};
 
 // menu selection
 const int maxGenerators = 6;
@@ -43,6 +27,10 @@ byte menuSelection;
 // patterns
 RNGPointer patterns[maxGenerators];
 
+int introStep = 0;
+int menuStep = 0;
+int menuWait = MENU_FRAME;
+
 void setup() {
   Serial.begin(9600);
 
@@ -50,14 +38,13 @@ void setup() {
   patterns[0] = pattern1;
   patterns[1] = pattern2;
   patterns[2] = pattern3;
-  patterns[3] = pattern3;
-  patterns[4] = pattern3;
+  patterns[3] = pattern4;
+  patterns[4] = pattern5;
   patterns[5] = pattern3;
 
-
   //buttons
-  pinMode(button1Pin, INPUT_PULLUP);
-  pinMode(button2Pin, INPUT_PULLUP);
+  pinMode(button1Pin, INPUT);
+  pinMode(button2Pin, INPUT);
 
   button1.pin = button1Pin;
   button1.pressed = false;
@@ -69,48 +56,55 @@ void setup() {
 
   // set up the LCD's number of columns and rows:
   lcd.begin(16, 2);
-
-  lcd.setCursor(5, 0);
-  lcd.print("Hello!");
-
-  lcd.setCursor(2, 1);
-  lcd.print("Is it random?");
 }
 
-void checkButton(struct Button *button) {
-  bool state = analogRead(button->pin) < 100;
+void readSerial() {
+  Serial.readBytes(serialData, 1);
 
-  if (button->pressed != state) {
-    button->pressed = state;
-    button->takeAction = button->pressed;
+  if (serialData[0] == 'a') //press button1
+    button1.takeAction = 1;
 
-    if (state) {
-      button->clock = button->maxClock;
-    } else {
-      button->maxClock = Default_Max_Clock;
-    }
-  } else if (state) {
-    if (button->clock == 0) {
-      button->takeAction = true;
-      button->clock = button->maxClock;
+  if (serialData[0] == 'b') //press button2
+    button2.takeAction = 1;
 
-      if(button->maxClock > 600) {
-        button->maxClock -= button->maxClock / 10;
-      }
-    } else {
-      button->clock--;
-      button->takeAction = false;
+  if (serialData[0] == 'c') { //turn off display
+    displayNumber = 0;
+  }
+
+  if (serialData[0] == 'd') { //turn on display
+    displayNumber = 1;
+  }
+
+  if (serialData[0] == 'p') { //select pattern
+    Serial.readBytes(serialData, 1);
+
+    if (serialData[0] == ':') {
+      int expectedNumbers = Serial.parseInt();
+      Serial.println(expectedNumbers);
     }
   }
 
+  if (serialData[0] == 'x') { //send device info
+    Serial.print("info:");
+    Serial.print(Device_Name);
+    Serial.print(":");
+    Serial.print(Device_Screen_Color);
+    Serial.print(":");
+    Serial.print(currentGenerator);
+    Serial.println("");
+  }
 }
 
 void detectActions() {
-  checkButton(&button1);
-  checkButton(&button2);
+  if (Serial.available() > 0) {
+    readSerial();
+  } else if (Read_Hardware_Buttons) {
+    //checkButton(&button1);
+    //checkButton(&button2);
+  }
 
   // menu actions
-  if (isMenuShowing) {
+  if (interface == Menu) {
     if (button1.takeAction && state == Idle) {
       state = Action;
 
@@ -120,15 +114,15 @@ void detectActions() {
 
     if (button2.takeAction) {
       currentGenerator = menuSelection;
-      isMenuShowing = false;
+      interface = Number;
       state = Init;
     }
   }
 
   // generator actions
-  if (!isMenuShowing) {
+  if (interface == Number) {
     if (button1.takeAction) {
-      isMenuShowing = true;
+      interface = Menu;
       state = Init;
     }
 
@@ -137,121 +131,207 @@ void detectActions() {
     }
   }
 
-  if (!button1.takeAction && !button2.takeAction) {
-    state = Idle;
-  }
+  button1.takeAction = 0;
+  button2.takeAction = 0;
 }
 
 void loop() {
-
   detectActions();
 
-  if (isMenuShowing) {
+  if (interface == Intro) {
+    showIntro();
+  }
+
+  if (interface == Menu) {
     showMenu();
-  } else {
+  }
+
+  if (interface == Number) {
     showGenerator();
   }
 }
 
-void showMenu() {
-  if (state == Init) {
-    lcd.clear();
-    lcd.cursor();
-    lcd.blink();
+void showIntro() {
 
-    lcd.setCursor(0, 0);
-    lcd.print("Pattern select:");
+  if (introStep == 0) {
+    lcd.createChar(0, logo1);
+    lcd.createChar(1, logo2);
+    lcd.createChar(2, logo3);
+    lcd.createChar(3, logo4);
+  }
 
-    char buffer[20] = "";
-    for (int i = 1; i < maxGenerators + 1; i++) {
-      sprintf(buffer, "%s %d", buffer, i);
+  if (introStep < 500 && introStep > 10) {
+    //logo
+    lcd.setCursor(7, 0);
+    lcd.write((uint8_t)0);
+
+    lcd.setCursor(8, 0);
+    lcd.write((uint8_t)2);
+
+    lcd.setCursor(7, 1);
+    lcd.write((uint8_t)1);
+
+    lcd.setCursor(8, 1);
+    lcd.write((uint8_t)3);
+  }
+
+  if (introStep < 50 && introStep > 20) {
+    if (flowerIndex[0] < 8) {
+      flowerIndex[0]++;
     }
 
-    lcd.print(buffer);
+    if (flowerIndex[1] < 8 && flowerIndex[0] > 2) {
+      flowerIndex[1]++;
+    }
+    if (flowerIndex[2] < 8 && flowerIndex[0] > 4) {
+      flowerIndex[2]++;
+    }
 
-    lcd.setCursor(0, 1);
-    lcd.print(buffer);
+    lcd.createChar(4, flower[flowerIndex[0]]);
+    lcd.createChar(5, flower[flowerIndex[1]]);
+    lcd.createChar(6, flower[flowerIndex[2]]);
+
+    //flowers
+    lcd.setCursor(5, 1);
+    lcd.write((uint8_t)4);
+
+    lcd.setCursor(10, 1);
+    lcd.write((uint8_t)4);
+
+    if (flowerIndex[0] > 2) {
+      lcd.setCursor(12, 1);
+      lcd.write((uint8_t)5);
+
+      lcd.setCursor(3, 1);
+      lcd.write((uint8_t)5);
+    }
+
+    if (flowerIndex[0] > 4) {
+      lcd.setCursor(1, 1);
+      lcd.write((uint8_t)6);
+
+      lcd.setCursor(14, 1);
+      lcd.write((uint8_t)6);
+    }
+  }
+
+  introStep++;
+  delay(40);
+
+  if (introStep >= 50) {
+    interface = Menu;
+
+    lcd.setCursor(0, 0);
+    lcd.print("Hello!");
+
+    delay(1500);
+
+    lcd.setCursor(0, 0);
+    lcd.print("Is it ");
+
+    lcd.setCursor(9, 0);
+    lcd.print("random?");
+
+    delay(3000);
+  }
+}
+
+void setupMenuGraphics() {
+  int rnd = random(4);
+  lcd.createChar(0, patternGraphic[rnd][0]);
+  lcd.createChar(1, patternGraphic[rnd][1]);
+  lcd.createChar(2, patternGraphic[rnd][2]);
+  lcd.createChar(3, patternGraphic[rnd][3]);
+  lcd.createChar(4, patternGraphic[rnd][4]);
+  lcd.createChar(5, patternGraphic[rnd][5]);
+  lcd.createChar(6, patternGraphic[rnd][6]);
+  lcd.createChar(7, patternGraphic[rnd][7]);
+}
+
+void showMenu() {
+  char buffer[20] = "";
+
+  if (state == Init) {
+    lcd.clear();
+
+    lcd.setCursor(0, 0);
+    lcd.print("PATTERN");
 
     menuSelection = currentGenerator;
 
     state = Action;
+
+    setupMenuGraphics();
   }
 
   if (state == Action) {
-    showMenuSelection('>', currentGenerator);
-    showMenuSelection('<', currentGenerator+1);
+    sprintf(buffer, "%d", menuSelection + 1);
 
-    lcd.setCursor(menuSelection * 2 + 1, 1);
+    lcd.setCursor(8, 0);
+    lcd.print(buffer);
 
-    state = ActionPerformed;
+    setupMenuGraphics();
   }
-}
 
-void showMenuSelection(char c, byte position) {
-  lcd.setCursor(position * 2, 1);
-  lcd.print(c);
+
+  if (menuWait == 0) {
+    menuStep++;
+
+    if (menuStep >= 4) {
+      menuStep = 0;
+    }
+
+    //display patterns on row 1
+    for (int i = 0; i < 16; i++) {
+      lcd.setCursor(i, 1);
+
+      if (i % 2) {
+        lcd.write((uint8_t) menuStep % 4);
+      } else {
+        lcd.write((uint8_t) 4 + menuStep % 4);
+      }
+    }
+
+    menuWait = MENU_FRAME;
+  } else {
+    menuWait--;
+  }
+
+  state = Idle;
 }
 
 void showGenerator() {
-  if (state == Init) {   
+  if (state == Init) {
     lcd.clear();
     lcd.noCursor();
     lcd.noBlink();
-     
+
     lcd.setCursor(0, 0);
     char title[16] = "Pattern";
     sprintf(title, "%s %d", title, currentGenerator + 1);
     lcd.print(title);
 
     previousPattern1 = 0;
+    previousPattern5 = 1;
 
     state = Action;
   }
 
   if (state == Action) {
     double number = patterns[currentGenerator]();
-    char buffer[200];
-    
-    lcd.setCursor(0, 1);
-    lcd.print("                ");
 
-    lcd.setCursor(0, 1);
-    
-    dtostrf(number, 7, 5, buffer);
+    dtostrf(number, 7, 5, numberBuffer);
 
-    lcd.print(buffer);    
-    Serial.println(buffer);
+    if (displayNumber) {
+      lcd.setCursor(0, 1);
+      lcd.print("                ");
 
-    state = ActionPerformed;
+      lcd.setCursor(0, 1);
+      lcd.print(numberBuffer);
+    }
+
+    Serial.println(numberBuffer);
   }
+
+  state = Idle;
 }
-
-/**
-  Returns a random number. If a random number was already returned, the new
-  generated number will be larger than previous number but not bigger than 1.
-*/
-
-double pattern1() {
-  double current = uniformRandom(previousPattern1, min(previousPattern1+0.001, 1));
-  previousPattern1 = current;
-  return current;
-}
-
-double pattern2() {
-  return 0.2f;
-}
-/**
-  Returns a random number using the language built-in uniform generator
-*/
-double pattern3() {
-  return (double)random(2147483647L) / 2147483647;
-}
-
-double uniformRandom(double min, double max) {
-  double interval = max - min;
-  return pattern3() * interval + min;
-  
-}
-
-
-
