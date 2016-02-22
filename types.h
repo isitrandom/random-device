@@ -18,8 +18,8 @@ enum Interface_States {
 
 struct Button {
   int pin;
-  bool pressed;
-  bool takeAction;
+  bool pressed = false;
+  bool takeAction = false;
   int clock;
   int maxClock = Default_Max_Clock;
 };

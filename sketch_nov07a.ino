@@ -8,6 +8,10 @@
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
+int expectedNumbers = 0;
+int remainingNumbers = 0;
+int oldPercent = 0;
+
 // serialData
 char serialData[1];
 
@@ -47,18 +51,19 @@ void setup() {
   pinMode(button2Pin, INPUT);
 
   button1.pin = button1Pin;
-  button1.pressed = false;
-  button1.takeAction = false;
-
   button2.pin = button2Pin;
-  button2.pressed = false;
-  button2.takeAction = false;
 
   // set up the LCD's number of columns and rows:
   lcd.begin(16, 2);
 }
 
-void readSerial() {
+void readSerial() {  
+  if(remainingNumbers > 0) {
+    button2.takeAction = 1;
+    remainingNumbers--;
+    return;
+  }
+
   Serial.readBytes(serialData, 1);
 
   if (serialData[0] == 'a') //press button1
@@ -79,8 +84,11 @@ void readSerial() {
     Serial.readBytes(serialData, 1);
 
     if (serialData[0] == ':') {
-      int expectedNumbers = Serial.parseInt();
-      Serial.println(expectedNumbers);
+      expectedNumbers = Serial.parseInt();
+      remainingNumbers = expectedNumbers;
+      
+      lcd.setCursor(0, 1);
+      lcd.print("                ");
     }
   }
 
@@ -99,8 +107,8 @@ void detectActions() {
   if (Serial.available() > 0) {
     readSerial();
   } else if (Read_Hardware_Buttons) {
-    //checkButton(&button1);
-    //checkButton(&button2);
+    checkButton(&button1);
+    checkButton(&button2);
   }
 
   // menu actions
@@ -137,7 +145,7 @@ void detectActions() {
 
 void loop() {
   detectActions();
-
+  
   if (interface == Intro) {
     showIntro();
   }
@@ -322,7 +330,19 @@ void showGenerator() {
 
     dtostrf(number, 7, 5, numberBuffer);
 
-    if (displayNumber) {
+    
+    if (remainingNumbers > 0) {
+      int percent = 17 - ((double)remainingNumbers/(double)expectedNumbers) * 17;
+
+      if(percent != oldPercent) {
+         for(int i=0; i<percent; i++) {
+          lcd.setCursor(i, 1);
+          lcd.print("#"); 
+         }
+      }
+
+      oldPercent = percent;
+    } else if (displayNumber) {
       lcd.setCursor(0, 1);
       lcd.print("                ");
 
