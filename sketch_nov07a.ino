@@ -26,7 +26,6 @@ int flowerIndex[3] = {0, 0, 0};
 // menu selection
 const int maxGenerators = 6;
 byte currentGenerator = 0;
-byte menuSelection;
 
 // patterns
 RNGPointer patterns[maxGenerators];
@@ -57,8 +56,8 @@ void setup() {
   lcd.begin(16, 2);
 }
 
-void readSerial() {  
-  if(remainingNumbers > 0) {
+void readSerial() {
+  if (remainingNumbers > 0) {
     button2.takeAction = 1;
     remainingNumbers--;
     return;
@@ -84,23 +83,37 @@ void readSerial() {
     Serial.readBytes(serialData, 1);
 
     if (serialData[0] == ':') {
+      int pattern = Serial.parseInt() - 1;
+      currentGenerator = pattern < maxGenerators ? pattern : 0;
+      state = Init;
+      showGenerator();
+    }
+  }
+
+  if (serialData[0] == 't') { //take numbers
+    Serial.readBytes(serialData, 1);
+
+    if (serialData[0] == ':') {
       expectedNumbers = Serial.parseInt();
       remainingNumbers = expectedNumbers;
-      
+
       lcd.setCursor(0, 1);
       lcd.print("                ");
     }
   }
 
   if (serialData[0] == 'x') { //send device info
-    Serial.print("info:");
-    Serial.print(Device_Name);
-    Serial.print(":");
-    Serial.print(Device_Screen_Color);
-    Serial.print(":");
-    Serial.print(currentGenerator);
-    Serial.println("");
+    sendInfo();
   }
+}
+
+void sendInfo() {
+  remainingNumbers = 0;
+
+  char buffer[500];
+  sprintf(buffer, "info:%s:%s:%d", Device_Name, Device_Screen_Color, currentGenerator);
+
+  Serial.println(buffer);
 }
 
 void detectActions() {
@@ -116,12 +129,12 @@ void detectActions() {
     if (button1.takeAction && state == Idle) {
       state = Action;
 
-      menuSelection++;
-      menuSelection = menuSelection < maxGenerators ? menuSelection : 0;
+      currentGenerator++;
+      currentGenerator = currentGenerator < maxGenerators ? currentGenerator : 0;
+      sendInfo();
     }
 
     if (button2.takeAction) {
-      currentGenerator = menuSelection;
       interface = Number;
       state = Init;
     }
@@ -132,6 +145,10 @@ void detectActions() {
     if (button1.takeAction) {
       interface = Menu;
       state = Init;
+
+      currentGenerator++;
+      currentGenerator = currentGenerator < maxGenerators ? currentGenerator : 0;
+      sendInfo();
     }
 
     if (button2.takeAction && state == Idle) {
@@ -145,7 +162,7 @@ void detectActions() {
 
 void loop() {
   detectActions();
-  
+
   if (interface == Intro) {
     showIntro();
   }
@@ -263,9 +280,7 @@ void showMenu() {
     lcd.clear();
 
     lcd.setCursor(0, 0);
-    lcd.print("PATTERN");
-
-    menuSelection = currentGenerator;
+    lcd.print("Pattern");
 
     state = Action;
 
@@ -273,7 +288,7 @@ void showMenu() {
   }
 
   if (state == Action) {
-    sprintf(buffer, "%d", menuSelection + 1);
+    sprintf(buffer, "%d", currentGenerator + 1);
 
     lcd.setCursor(8, 0);
     lcd.print(buffer);
@@ -330,15 +345,17 @@ void showGenerator() {
 
     dtostrf(number, 7, 5, numberBuffer);
 
-    
-    if (remainingNumbers > 0) {
-      int percent = 17 - ((double)remainingNumbers/(double)expectedNumbers) * 17;
 
-      if(percent != oldPercent) {
-         for(int i=0; i<percent; i++) {
+    if (remainingNumbers > 0) {
+      int percent = 17 - ((double)remainingNumbers / (double)expectedNumbers) * 17;
+
+      if (percent != oldPercent) {
+        lcd.createChar(0, fullGraphic);
+
+        for (int i = 0; i < percent; i++) {
           lcd.setCursor(i, 1);
-          lcd.print("#"); 
-         }
+          lcd.print((char)0);
+        }
       }
 
       oldPercent = percent;

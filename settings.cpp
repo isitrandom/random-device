@@ -16,4 +16,4 @@ int MENU_FRAME = 8000;
 // button states
 int Default_Max_Clock = 5000;
 
-bool Read_Hardware_Buttons = false;
+bool Read_Hardware_Buttons = true;
